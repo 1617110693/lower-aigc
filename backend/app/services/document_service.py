@@ -37,6 +37,7 @@ from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.core.exceptions import ForbiddenError, NotFoundError
@@ -147,9 +148,11 @@ class DocumentService:
 
         await self.db.flush()
 
-        # 重新加载文档（eager load 段落关系）
+        # 重新加载文档（eager load 段落关系，避免异步延迟加载报错）
         result = await self.db.execute(
-            select(Document).where(Document.id == doc.id)
+            select(Document)
+            .where(Document.id == doc.id)
+            .options(selectinload(Document.paragraphs))
         )
         doc = result.scalar_one()
         return {
@@ -378,9 +381,11 @@ class DocumentService:
             from app.database import async_session
 
             async with async_session() as db:
-                # 在新会话中重新加载文档对象
+                # 在新会话中重新加载文档对象（级联加载段落，避免异步懒加载报错）
                 result = await db.execute(
-                    select(Document).where(Document.id == doc.id)
+                    select(Document)
+                    .where(Document.id == doc.id)
+                    .options(selectinload(Document.paragraphs))
                 )
                 doc = result.scalar_one()
 
@@ -436,9 +441,17 @@ class DocumentService:
 
         注意: 全文模式仅一次 API 调用，速度最快，但段落拆分可能不精确。
         """
+        # 更新进度 — 开始调用 AI
+        doc.progress = 20
+        await db.flush()
+
         # 拼接全文（段落间用双换行分隔）
         full_text = "\n\n".join(p.original_text for p in paragraphs)
         reduced = await deepseek_client.reduce_text(full_text, system_prompt)
+
+        # 更新进度 — AI 调用完成，开始处理结果
+        doc.progress = 80
+        await db.flush()
 
         # 尝试按双换行拆分回段落
         reduced_paragraphs = reduced.split("\n\n")
@@ -514,10 +527,12 @@ class DocumentService:
             NotFoundError: 文档不存在或不属于当前用户
         """
         result = await self.db.execute(
-            select(Document).where(
+            select(Document)
+            .where(
                 Document.id == document_id,
                 Document.user_id == user.id,  # 关键: 限定查询到当前用户
             )
+            .options(selectinload(Document.paragraphs))
         )
         doc = result.scalar_one_or_none()
         if not doc:

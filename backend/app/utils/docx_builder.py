@@ -32,10 +32,41 @@ from docx import Document as DocxDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Pt
+from lxml import etree
 
 from app.schemas.document import StyleInfo
 
 logger = logging.getLogger(__name__)
+
+
+def _set_run_east_asian_font(run, font_name: str) -> None:
+    """
+    安全地为 Run 设置东亚字体（中日韩文字回退字体）
+
+    参数:
+        run: python-docx Run 对象
+        font_name: 字体名称（如 "宋体"、"SimSun" 等）
+    """
+    rPr = run._element.get_or_add_rPr()
+    rFonts = rPr.find(qn("w:rFonts"))
+    if rFonts is None:
+        rFonts = etree.SubElement(rPr, qn("w:rFonts"))
+    rFonts.set(qn("w:eastAsia"), font_name)
+
+
+def _set_style_east_asian_font(style, font_name: str) -> None:
+    """
+    安全地为 Style 设置东亚字体（中日韩文字回退字体）
+
+    参数:
+        style: python-docx Style 对象
+        font_name: 字体名称（如 "宋体"、"SimSun" 等）
+    """
+    rPr = style.element.get_or_add_rPr()
+    rFonts = rPr.find(qn("w:rFonts"))
+    if rFonts is None:
+        rFonts = etree.SubElement(rPr, qn("w:rFonts"))
+    rFonts.set(qn("w:eastAsia"), font_name)
 
 # 数字编码 → python-docx 对齐枚举（与 docx_parser.ALIGNMENT_MAP 相反）
 ALIGNMENT_REVERSE_MAP = {
@@ -65,8 +96,8 @@ def build_docx(paragraphs: list[dict]) -> io.BytesIO:
     style = doc.styles["Normal"]
     font = style.font
     font.name = "Times New Roman"
-    # 设置东亚字体（w:eastAsia 是 OOXML 规范）
-    style.element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+    # 安全地设置东亚字体（使用辅助函数，避免直接访问可能不存在的XML元素）
+    _set_style_east_asian_font(style, "宋体")
 
     for para_data in paragraphs:
         text = para_data.get("text", "")
@@ -127,8 +158,8 @@ def _add_paragraph_with_style(doc: DocxDocument, text: str, style: StyleInfo):
     run = para.add_run(text)
     if style.font_name:
         run.font.name = style.font_name
-        # 同时设置东亚字体为相同字体
-        run._element.rPr.rFonts.set(qn("w:eastAsia"), style.font_name)
+        # 同时设置东亚字体为相同字体（安全访问XML元素）
+        _set_run_east_asian_font(run, style.font_name)
     if style.font_size:
         run.font.size = Pt(style.font_size)
     run.bold = style.bold

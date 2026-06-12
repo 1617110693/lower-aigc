@@ -50,7 +50,7 @@ function beforeUpload(file) {
         v-model:file-list="fileList"
         class="upload-dragger"
         drag
-        :auto-upload="false"
+        :auto-upload="true"
         :show-file-list="false"
         :http-request="handleUpload"
         :before-upload="beforeUpload"

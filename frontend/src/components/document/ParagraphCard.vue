@@ -24,6 +24,7 @@ const isError = computed(() => {
     <div class="card-header">
       <span class="card-badge">{{ t('reduction.original') }}</span>
       <span class="card-badge reduced-badge" v-if="hasReduced">{{ t('reduction.reduced') }}</span>
+      <span v-else></span>
     </div>
 
     <div class="card-body">
@@ -65,11 +66,18 @@ const isError = computed(() => {
 }
 
 .card-header {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
   padding: 12px 16px;
   background: #fafafa;
   border-bottom: 1px solid #ebeef5;
+}
+
+@media (max-width: 768px) {
+  .card-header {
+    grid-template-columns: 1fr;
+  }
 }
 
 .card-badge {

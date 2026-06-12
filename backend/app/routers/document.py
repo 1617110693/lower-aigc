@@ -20,6 +20,7 @@
 """
 
 import logging
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -235,8 +236,12 @@ async def export_document(
     buf, filename = await service.export_docx(current_user, document_id)
 
     # StreamingResponse 流式返回文件，不会一次性加载全部内容到内存
+    # 使用 RFC 5987 编码处理非 ASCII 文件名（如中文）
+    encoded_filename = quote(filename)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+        },
     )
