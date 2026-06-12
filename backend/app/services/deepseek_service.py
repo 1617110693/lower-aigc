@@ -1,4 +1,29 @@
-"""DeepSeek API integration for AIGC reduction."""
+"""
+DeepSeek API 集成模块 (DeepSeek Service)
+
+核心模块之一，负责:
+  1. 管理内置的降 AIGC 系统提示词（3 套策略）
+  2. 封装 DeepSeek Chat API 的异步调用
+  3. 实现指数退避重试机制，处理限流和服务器错误
+
+降重策略说明:
+  - academic-paraphrase:  学术改写 — 变换句式结构，使用学科词汇，保持学术严谨性
+  - style-diversification: 风格多样化 — 长短句交替，添加过渡语，融入领域术语
+  - natural-human-voice:   自然人声 — 添加适度不完美，模拟真人写作风格
+
+重试策略:
+  - 429 (Rate Limit): 使用 API 返回的 Retry-After 等待时间
+  - 5xx (Server Error): 指数退避 (2^attempt 秒)
+  - Timeout: 同上指数退避
+  - 最多重试 3 次，全部失败后抛出 RuntimeError
+
+扩展指南:
+  - 添加新的降重策略: 在 PROMPTS 列表中添加新的 dict 即可，
+    无需修改其他代码，前端会自动通过 /prompts 接口获取
+  - 切换模型: 修改 payload 中的 "model" 字段，
+    如 deepseek-chat / deepseek-reasoner
+  - 对接其他 LLM: 新建类继承相同的接口，在 document_service 中替换
+"""
 
 import asyncio
 import logging
@@ -11,7 +36,10 @@ from app.schemas.document import PromptInfo
 
 logger = logging.getLogger(__name__)
 
-# ─── Pre-configured system prompts ───────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# 预置系统提示词 (System Prompts)
+# 每套提示词包含 id、名称、描述和完整的 system message 内容
+# ═══════════════════════════════════════════════════════════════════════════════
 
 PROMPTS: list[dict] = [
     {
@@ -51,7 +79,13 @@ PROMPTS: list[dict] = [
 
 
 def get_prompts() -> list[PromptInfo]:
-    """Return available system prompts (without the full system content)."""
+    """
+    获取可用的降重策略列表（不含完整提示词内容）
+
+    此函数供 /api/v1/documents/prompts 端点调用，
+    向前端返回策略的 id、名称和描述，供用户选择。
+    完整提示词内容在降重时才通过 get_prompt_content() 获取。
+    """
     return [
         PromptInfo(id=p["id"], name=p["name"], description=p["description"])
         for p in PROMPTS
@@ -59,27 +93,62 @@ def get_prompts() -> list[PromptInfo]:
 
 
 def get_prompt_content(prompt_id: str) -> str | None:
-    """Get the full system content for a given prompt ID."""
+    """
+    根据策略 ID 获取完整的 system message 内容
+
+    参数:
+        prompt_id: 策略标识符，如 "academic-paraphrase"
+    返回:
+        完整的 system message 文本，找不到则返回 None
+    """
     for p in PROMPTS:
         if p["id"] == prompt_id:
             return p["system_content"]
     return None
 
 
-# ─── DeepSeek API client ────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# DeepSeek API 客户端
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class DeepSeekClient:
-    """Async client for the DeepSeek chat completions API."""
+    """
+    DeepSeek Chat API 异步客户端
+
+    封装了 API 调用、重试逻辑和错误处理。
+
+    配置:
+      - base_url: API 基础 URL（默认 https://api.deepseek.com/v1）
+      - api_key: API 密钥（从 .env 加载）
+      - max_retries: 最大重试次数（默认 3 次）
+      - timeout: 单次请求超时时间（默认 120 秒）
+
+    API 参数说明:
+      - model: deepseek-chat (标准对话模型)
+      - temperature: 0.7 (中等的创造性，兼顾多样化和稳定性)
+      - max_tokens: 4096 (单次改写最多返回的 token 数)
+    """
 
     def __init__(self):
         self.base_url = settings.DEEPSEEK_BASE_URL
         self.api_key = settings.DEEPSEEK_API_KEY
-        self.max_retries = 3
-        self.timeout = 120.0  # seconds
+        self.max_retries = 3          # 最大重试次数
+        self.timeout = 120.0          # 超时时间（秒），长文本可能需要较长时间
 
     async def reduce_text(self, text: str, system_prompt: str) -> str:
-        """Send text to DeepSeek API and return the rewritten result."""
+        """
+        调用 DeepSeek API 改写文本
+
+        参数:
+            text: 待改写的原始文本（单段落或全文拼接）
+            system_prompt: 系统提示词（定义改写风格和约束）
+        返回:
+            API 返回的改写后文本
+        异常:
+            ValueError: API 密钥未配置
+            RuntimeError: 重试耗尽后仍然失败
+        """
         if not self.api_key:
             raise ValueError("DEEPSEEK_API_KEY is not configured")
 
@@ -94,38 +163,54 @@ class DeepSeekClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text},
             ],
-            "temperature": 0.7,
-            "max_tokens": 4096,
+            "temperature": 0.7,       # 0.7 = 中等创造性，兼顾多样化和原文忠实度
+            "max_tokens": 4096,       # 单次最大输出 token 数
         }
 
         last_error = None
         for attempt in range(self.max_retries):
             try:
+                # 每次重试创建新的 AsyncClient（避免连接复用导致的潜在问题）
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     response = await client.post(url, json=payload, headers=headers)
                     response.raise_for_status()
                     data = response.json()
                     return data["choices"][0]["message"]["content"]
+
             except httpx.HTTPStatusError as e:
                 last_error = e
                 if e.response.status_code == 429:
+                    # 429 Too Many Requests — 按 API 返回的 Retry-After 等待
                     retry_after = e.response.headers.get("Retry-After", "5")
                     wait = int(retry_after) if retry_after.isdigit() else 5
-                    logger.warning(f"Rate limited. Retrying after {wait}s (attempt {attempt + 1})")
+                    logger.warning(
+                        f"Rate limited. Retrying after {wait}s (attempt {attempt + 1})"
+                    )
                     await asyncio.sleep(wait)
                 elif e.response.status_code >= 500:
+                    # 5xx 服务器错误 — 指数退避: 1s, 2s, 4s...
                     wait = 2 ** attempt
-                    logger.warning(f"Server error. Retrying in {wait}s (attempt {attempt + 1})")
+                    logger.warning(
+                        f"Server error. Retrying in {wait}s (attempt {attempt + 1})"
+                    )
                     await asyncio.sleep(wait)
                 else:
+                    # 4xx 客户端错误（非 429）— 不重试，直接抛出
                     raise
+
             except httpx.TimeoutException as e:
                 last_error = e
                 wait = 2 ** attempt
-                logger.warning(f"Timeout. Retrying in {wait}s (attempt {attempt + 1})")
+                logger.warning(
+                    f"Timeout. Retrying in {wait}s (attempt {attempt + 1})"
+                )
                 await asyncio.sleep(wait)
 
-        raise RuntimeError(f"DeepSeek API call failed after {self.max_retries} retries: {last_error}")
+        # 全部重试耗尽
+        raise RuntimeError(
+            f"DeepSeek API call failed after {self.max_retries} retries: {last_error}"
+        )
 
 
+# 全局 DeepSeek 客户端实例 — 在应用的任何地方导入此实例即可使用
 deepseek_client = DeepSeekClient()

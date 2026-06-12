@@ -1,4 +1,22 @@
-"""FastAPI application entry point."""
+"""
+Application Entry Point
+
+FastAPI 应用的主入口文件，负责:
+  1. 创建 FastAPI 应用实例
+  2. 配置生命周期事件（启动时初始化数据库、关闭时清理）
+  3. 注册 CORS 中间件（允许前端跨域访问）
+  4. 注册全局异常处理器（统一错误响应格式）
+  5. 挂载各模块的路由器
+
+启动命令:
+    uvicorn app.main:app --reload --port 8000
+    或使用 UV: uv run uvicorn app.main:app --reload --port 8000
+
+扩展指南:
+  - 新增路由模块时，在此文件的 # 注册路由器 区域追加一行 include_router
+  - 新增中间件（如请求日志、限流），在 CORS 之后添加
+  - 新增异常类型时，在异常处理器区域添加对应的 @app.exception_handler
+"""
 
 import logging
 from contextlib import asynccontextmanager
@@ -12,6 +30,8 @@ from app.core.exceptions import AppException
 from app.database import init_db
 from app.routers import auth, document, health
 
+# 配置根日志记录器
+# 格式: 时间 - 模块名 - 级别 - 消息
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -21,48 +41,78 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown events."""
+    """
+    FastAPI 生命周期管理器
+
+    startup: 应用启动时初始化数据库表结构
+    shutdown: 应用关闭时的清理工作（当前无需特殊处理）
+
+    用法:
+        app = FastAPI(lifespan=lifespan)
+    """
+    # ── 启动阶段 ──
     logger.info(f"Starting {settings.APP_NAME} in {settings.ENVIRONMENT} mode")
     await init_db()
     logger.info("Database tables initialized")
-    yield
+
+    yield  # 应用运行期间
+
+    # ── 关闭阶段 ──
     logger.info("Shutting down")
 
 
+# 创建 FastAPI 应用实例
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# CORS — allow frontend dev server and production
+# ═══════════════════════════════════════════════════════════════════════════════
+# CORS 中间件 — 允许前端跨域访问
+# ═══════════════════════════════════════════════════════════════════════════════
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "http://localhost",
+        "http://localhost:5173",   # Vite 开发服务器
+        "http://localhost:4173",   # Vite 预览服务器
+        "http://localhost",         # Docker Nginx 生产
         "http://127.0.0.1",
-        settings.APP_URL,
+        settings.APP_URL,          # 自定义前端地址（从 .env 读取）
     ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=True,        # 允许携带 Cookie（JWT 不使用 Cookie，但保留以备扩展）
+    allow_methods=["*"],           # 允许所有 HTTP 方法
+    allow_headers=["*"],           # 允许所有请求头
 )
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 全局异常处理器
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# Global exception handler for custom app exceptions
+
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
+    """
+    应用层异常统一处理
+
+    捕获所有 AppException 子类（NotFoundError, ForbiddenError, ConflictError 等），
+    转换为 JSON 响应，格式: {"detail": "错误消息"}
+    HTTP 状态码由异常的 status_code 属性决定。
+    """
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.message},
     )
 
 
-# General exception handler for unhandled errors
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
+    """
+    未预期异常兜底处理
+
+    捕获未被上层处理的所有异常，返回 500 错误。
+    详细错误信息仅输出到日志，不暴露给前端（安全考虑）。
+    """
     logger.exception(f"Unhandled error: {exc}")
     return JSONResponse(
         status_code=500,
@@ -70,12 +120,25 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Register routers
+# ═══════════════════════════════════════════════════════════════════════════════
+# 注册路由器
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# 健康检查
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
+
+# 认证相关: /api/v1/auth/*
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+
+# 文档相关: /api/v1/documents/*
 app.include_router(document.router, prefix="/api/v1/documents", tags=["Documents"])
 
 
 @app.get("/")
 async def root():
+    """
+    根路径 — GET /
+
+    返回应用名称和版本号，可用于快速验证服务是否正常运行。
+    """
     return {"name": settings.APP_NAME, "version": "1.0.0"}
