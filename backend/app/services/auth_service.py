@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models import User
@@ -141,8 +142,8 @@ class AuthService:
         if not user or not verify_password(password, user.password_hash):
             raise ForbiddenError("Invalid email or password")
 
-        # 检查邮箱验证状态
-        if not user.is_verified:
+        # 检查邮箱验证状态（生产环境强制要求，开发环境可通过 .env 关闭）
+        if settings.REQUIRE_EMAIL_VERIFICATION and not user.is_verified:
             raise ForbiddenError("Please verify your email before logging in")
 
         access_token = create_access_token(user.id)

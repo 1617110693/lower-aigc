@@ -13,12 +13,21 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# 自动定位 .env 文件: 优先当前工作目录，其次项目根目录
+# 支持从 backend/ 子目录或项目根目录启动 uvicorn
+_CWD_ENV = Path.cwd() / ".env"
+_PROJECT_ROOT_ENV = Path(__file__).resolve().parent.parent.parent / ".env"
+_ENV_FILE = _CWD_ENV if _CWD_ENV.exists() else _PROJECT_ROOT_ENV
+
 
 class Settings(BaseSettings):
     """
     应用设置类
 
-    自动从项目根目录的 .env 文件加载环境变量。
+    自动从 .env 文件加载环境变量。查找顺序:
+      1. 当前工作目录的 .env 文件
+      2. 项目根目录 (backend/../) 的 .env 文件
+
     所有字段名大小写不敏感 (case_sensitive=False)，
     所以 .env 中用 DEEPSEEK_API_KEY 和 deepseek_api_key 都可以。
 
@@ -28,7 +37,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",           # 从项目根目录的 .env 文件中读取
+        env_file=str(_ENV_FILE),   # 自动定位 .env 文件路径
         env_file_encoding="utf-8", # 使用 UTF-8 编码（支持中文注释）
         case_sensitive=False,      # 环境变量名不区分大小写
     )
