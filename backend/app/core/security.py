@@ -10,40 +10,50 @@ JWT 流程：
 
 密码安全：
   使用 bcrypt 算法对密码进行哈希存储，原密码永不落库。
-  passlib 的 CryptContext 会自动处理加盐和哈希轮次。
+  bcrypt.gensalt() 每次生成随机盐值，即使相同密码哈希结果也不同。
+  bcrypt 内部限制密码最大为 72 字节，超出部分在调用前截断。
 
 扩展指南：
   - 如需修改令牌过期时间，修改 .env 中的 ACCESS_TOKEN_EXPIRE_MINUTES
   - 如需切换签名算法（如 RS256），修改 ALGORITHM 并配置公私钥对
+  - 如需调整 bcrypt 哈希轮次（work factor），修改 gensalt(rounds=12) 中的数字
+    （轮次越高越安全，但验证越慢。12 是当前推荐值，约 0.3s/次）
 """
 
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.config import settings
 
-# 密码上下文：使用 bcrypt 算法，自动处理过时哈希方案的升级
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 # JWT 签名算法: HMAC-SHA256 (对称密钥，适合单服务部署)
 ALGORITHM = "HS256"
+
+# bcrypt 哈希轮次（work factor），12 = 2^12 轮迭代
+# 在此配置下，单次哈希约耗时 0.25-0.3 秒，兼顾安全性和用户体验
+BCRYPT_ROUNDS = 12
 
 
 def hash_password(password: str) -> str:
     """
     对明文密码进行 bcrypt 哈希
 
-    bcrypt 内置盐值，每次调用生成的哈希值都不同，
-    即使两个用户使用相同的密码，哈希值也不一样。
+    bcrypt 内置随机盐值，每次调用生成的哈希值都不同，
+    即使两个用户使用相同的密码，哈希结果也不一样。
+
+    bcrypt 限制密码最大 72 字节 — 对于英语 ASCII 密码就是 72 个字符。
+    如果传入更长的密码，这里自动截断到前 72 字节（按 UTF-8 编码计）。
 
     参数:
         password: 用户注册时的明文密码
     返回:
         bcrypt 哈希字符串 (例: $2b$12$...)
     """
-    return pwd_context.hash(password)
+    # bcrypt 密码上限 72 字节，超长密码截断处理
+    password_bytes = password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
+    return bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -56,7 +66,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     返回:
         True 表示密码正确，False 表示不匹配
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    password_bytes = plain_password.encode("utf-8")[:72]
+    return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
 
 
 def create_access_token(subject: int | str) -> str:
