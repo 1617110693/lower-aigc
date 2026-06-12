@@ -16,7 +16,7 @@
 | 层 | 技术 |
 |---|------|
 | 前端 | Vue 3 + Vite + Element Plus + vue-i18n + Pinia |
-| 后端 | Python FastAPI + SQLAlchemy 2.0 (async) + SQLite |
+| 后端 | Python FastAPI + SQLAlchemy 2.0 (async) + SQLite + UV |
 | AI | DeepSeek API (deepseek-chat) |
 | 部署 | Docker + Nginx + docker-compose |
 
@@ -52,16 +52,19 @@ docker-compose up -d
 
 ### 3. 本地开发（非 Docker）
 
-**后端**（需要 Python 3.12+）：
+**后端**（需要 Python 3.12+，使用 UV 管理依赖）：
 
 ```bash
 cd backend
-uv venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-uv pip install -r requirements.txt
+uv sync                      # 自动创建 .venv + 安装全部依赖
+source .venv/bin/activate    # Windows: .venv\Scripts\activate
 cp ../.env .env              # 或直接使用项目根目录的 .env
-uvicorn app.main:app --reload --port 8000
 ```
+
+```bash
+uv run uvicorn app.main:app --reload --port 8000
+```
+
 
 **前端**（需要 Node.js 20+）：
 
@@ -83,7 +86,8 @@ lower-aigc/
 │
 ├── backend/                  # Python FastAPI 后端
 │   ├── Dockerfile
-│   ├── requirements.txt
+│   ├── pyproject.toml         # 项目元数据 & 依赖（UV）
+│   ├── uv.lock                # 依赖锁文件
 │   └── app/
 │       ├── main.py           # 应用入口，CORS，生命周期
 │       ├── config.py         # 配置（从 .env 加载）
