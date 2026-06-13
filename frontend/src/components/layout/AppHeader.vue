@@ -42,6 +42,9 @@ function logout() {
 
       <nav class="header-nav">
         <template v-if="authStore.isAuthenticated">
+          <el-button text @click="router.push({ name: 'quick-reduce' })">
+            {{ t('nav.quickReduce') }}
+          </el-button>
           <el-button text @click="router.push({ name: 'upload' })">
             {{ t('nav.upload') }}
           </el-button>
@@ -66,6 +69,9 @@ function logout() {
           </el-dropdown>
         </template>
         <template v-else>
+          <el-button text @click="router.push({ name: 'quick-reduce' })">
+            {{ t('nav.quickReduce') }}
+          </el-button>
           <el-button text @click="router.push({ name: 'login' })">
             {{ t('nav.login') }}
           </el-button>

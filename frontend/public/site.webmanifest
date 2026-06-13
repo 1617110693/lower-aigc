@@ -1,0 +1,13 @@
+{
+  "name": "Lower-AIGC",
+  "short_name": "Lower-AIGC",
+  "description": "学术论文 AIGC 率降低工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#6c5ce7",
+  "icons": [
+    { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

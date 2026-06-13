@@ -28,7 +28,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.core.exceptions import AppException
 from app.database import init_db
-from app.routers import auth, document, health
+from app.routers import auth, document, health, system
 
 # 配置根日志记录器
 # 格式: 时间 - 模块名 - 级别 - 消息
@@ -132,6 +132,9 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 
 # 文档相关: /api/v1/documents/*
 app.include_router(document.router, prefix="/api/v1/documents", tags=["Documents"])
+
+# 系统相关: /api/v1/system/*
+app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
 
 
 @app.get("/")

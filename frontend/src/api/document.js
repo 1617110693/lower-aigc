@@ -42,3 +42,10 @@ export function exportDocument(id) {
 export function getPrompts() {
   return api.get('/documents/prompts')
 }
+
+export function reduceText(text, promptId) {
+  return api.post('/system/reduce-text', {
+    text,
+    prompt_id: promptId,
+  })
+}

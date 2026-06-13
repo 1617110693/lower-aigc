@@ -32,6 +32,11 @@ const router = createRouter({
       component: () => import('@/views/auth/ResetPasswordView.vue'),
     },
     {
+      path: '/quick-reduce',
+      name: 'quick-reduce',
+      component: () => import('@/views/QuickReduceView.vue'),
+    },
+    {
       path: '/documents',
       meta: { requiresAuth: true },
       children: [
