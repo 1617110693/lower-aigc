@@ -25,6 +25,10 @@ const canReduce = computed(() => {
   return !props.isReducing && selectedPrompt.value
 })
 
+const selectedStrategy = computed(() =>
+  props.prompts.find((p) => p.id === selectedPrompt.value)
+)
+
 function handleReduce() {
   if (!selectedPrompt.value) {
     ElMessage.warning(t('reduction.selectPrompt'))
@@ -72,9 +76,12 @@ function handleReduce() {
           <el-option
             v-for="p in prompts"
             :key="p.id"
-            :label="`${p.name} - ${p.description}`"
+            :label="p.name"
             :value="p.id"
-          />
+          >
+            <span>{{ p.name }}</span>
+            <el-tag v-if="!p.system_default" size="small" type="warning" style="margin-left: 6px; float: right;">{{ t('prompts.custom') }}</el-tag>
+          </el-option>
         </el-select>
       </div>
 
@@ -98,6 +105,12 @@ function handleReduce() {
           {{ t('reduction.startBtn') }}
         </el-button>
       </div>
+    </div>
+
+    <!-- 选中策略的描述提示 -->
+    <div v-if="selectedStrategy" class="strategy-hint">
+      <el-icon><InfoFilled /></el-icon>
+      {{ selectedStrategy.description }}
     </div>
   </div>
 </template>
@@ -132,5 +145,17 @@ function handleReduce() {
 
 .control-actions {
   margin-left: auto;
+}
+
+.strategy-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #909399;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  margin-top: 16px;
 }
 </style>
