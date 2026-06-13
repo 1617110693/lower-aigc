@@ -111,11 +111,12 @@ class ReductionStatusResponse(BaseModel):
 
 
 class PromptInfo(BaseModel):
-    """降重策略信息 — 展示策略的 ID、名称和描述"""
+    """降重策略信息 — 展示策略的 ID、名称和描述（已登录用户可查看内置策略的 system_content）"""
     id: str
     name: str
     description: str
     system_default: bool = True
+    system_content: str | None = None
 
 
 # ── 自定义策略 CRUD Schemas ────────────────────────────────────────────────────

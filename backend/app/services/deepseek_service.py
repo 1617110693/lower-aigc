@@ -93,13 +93,14 @@ async def get_prompts(
 
     自定义策略的 ID 格式为 "custom-{db_id}"，避免与内置策略冲突。
     """
-    # 内置策略
+    # 内置策略（已登录用户可查看完整 system_content，游客仅看到名称和描述）
     builtin = [
         PromptInfo(
             id=p["id"],
             name=p["name"],
             description=p["description"],
             system_default=True,
+            system_content=p["system_content"] if user_id is not None else None,
         )
         for p in PROMPTS
     ]

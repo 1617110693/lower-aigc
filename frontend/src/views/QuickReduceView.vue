@@ -245,7 +245,6 @@ onMounted(() => {
                 <span class="strategy-desc">{{ s.desc }}</span>
               </el-option>
             </el-select>
-            <el-button :icon="Setting" circle size="small" @click="router.push('/prompts')" :title="t('prompts.title')" />
           </div>
           <el-checkbox v-model="preserveWordCount" :disabled="loading" border size="small">
             {{ t('quickReduce.preserveWordCount') }}

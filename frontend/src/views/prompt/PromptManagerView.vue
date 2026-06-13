@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -8,14 +8,18 @@ import {
   updateCustomPrompt,
   deleteCustomPrompt,
 } from '@/api/prompt'
+import { getPrompts } from '@/api/document'
 
 const { t } = useI18n()
 
-const prompts = ref([])
+const builtinPrompts = ref([])
+const customPrompts = ref([])
 const loading = ref(false)
 const dialogVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref(null)
+
+const hasBuiltin = computed(() => builtinPrompts.value.length > 0)
 
 const defaultForm = () => ({
   name: '',
@@ -30,8 +34,13 @@ const form = ref(defaultForm())
 async function loadPrompts() {
   loading.value = true
   try {
-    const res = await listCustomPrompts()
-    prompts.value = res.data || []
+    // 并行拉取内置策略（含 system_content）和自定义策略
+    const [promptsRes, customRes] = await Promise.all([
+      getPrompts(),
+      listCustomPrompts(),
+    ])
+    builtinPrompts.value = (promptsRes.data || []).filter((p) => p.system_default)
+    customPrompts.value = customRes.data || []
   } catch {
     // error handled by interceptor
   } finally {
@@ -124,24 +133,40 @@ onMounted(() => {
       </el-button>
     </div>
 
-    <!-- 内置策略提示 -->
-    <el-alert
-      :title="t('prompts.builtinNote')"
-      type="info"
-      :closable="false"
-      show-icon
-      style="margin-bottom: 20px"
-    />
+    <!-- 内置策略列表（只读） -->
+    <div v-if="hasBuiltin" class="section-label">{{ t('prompts.builtinTitle') }}</div>
+    <div v-if="hasBuiltin" class="prompt-list">
+      <el-card v-for="p in builtinPrompts" :key="p.id" class="prompt-card builtin-card" shadow="hover">
+        <div class="prompt-card-header">
+          <div class="prompt-card-title">
+            <span class="prompt-name">{{ p.name }}</span>
+            <el-tag size="small" type="primary">{{ t('prompts.builtin') }}</el-tag>
+          </div>
+        </div>
+        <p v-if="p.description" class="prompt-desc">{{ p.description }}</p>
+        <div v-if="p.system_content" class="prompt-content">
+          <el-input
+            :model-value="p.system_content"
+            type="textarea"
+            :rows="4"
+            readonly
+            resize="none"
+          />
+        </div>
+      </el-card>
+    </div>
 
     <!-- 自定义策略列表 -->
+    <div v-if="hasBuiltin" class="section-label">{{ t('prompts.customTitle') }}</div>
     <div v-loading="loading" class="prompt-list">
-      <el-empty v-if="!loading && !prompts.length" :description="t('prompts.empty')" />
+      <el-empty v-if="!loading && !customPrompts.length" :description="t('prompts.empty')" />
 
-      <el-card v-for="p in prompts" :key="p.id" class="prompt-card" shadow="hover">
+      <el-card v-for="p in customPrompts" :key="p.id" class="prompt-card" shadow="hover">
         <div class="prompt-card-header">
           <div class="prompt-card-title">
             <span class="prompt-name">{{ p.name }}</span>
             <el-tag v-if="!p.is_active" size="small" type="info">{{ t('prompts.disabled') }}</el-tag>
+            <el-tag v-else size="small" type="warning">{{ t('prompts.custom') }}</el-tag>
           </div>
           <div class="prompt-card-actions">
             <el-button text size="small" @click="openEdit(p)">
@@ -276,5 +301,25 @@ onMounted(() => {
   margin-top: 8px;
   font-size: 12px;
   color: #c0c4cc;
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #909399;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 24px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.builtin-card {
+  border-left: 3px solid #6c5ce7;
+}
+
+.builtin-card .prompt-content :deep(.el-textarea__inner) {
+  color: #606266;
+  background: #f5f7fa;
 }
 </style>

@@ -12,6 +12,7 @@ export default {
     register: '注册',
     logout: '退出登录',
     myDocuments: '我的文档',
+    prompts: '改写策略',
   },
   auth: {
     loginTitle: '登录',
@@ -115,8 +116,10 @@ export default {
     historyCleared: '历史已清空',
   },
   prompts: {
-    title: '自定义改写策略',
-    desc: '创建和管理你自己的降AIGC改写策略',
+    title: '改写策略管理',
+    desc: '查看内置策略，创建和管理你自己的降AIGC改写策略',
+    builtinTitle: '内置策略',
+    customTitle: '我的自定义策略',
     create: '新建策略',
     edit: '编辑',
     delete: '删除',

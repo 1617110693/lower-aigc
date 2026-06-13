@@ -44,6 +44,9 @@ function logout() {
           <el-button text @click="router.push({ name: 'history' })">
             {{ t('nav.myDocuments') }}
           </el-button>
+          <el-button text @click="router.push({ name: 'prompts' })">
+            {{ t('nav.prompts') }}
+          </el-button>
           <el-dropdown trigger="click">
             <span class="user-dropdown">
               <el-icon><User /></el-icon>

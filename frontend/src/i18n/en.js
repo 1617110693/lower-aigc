@@ -12,6 +12,7 @@ export default {
     register: 'Register',
     logout: 'Logout',
     myDocuments: 'My Documents',
+    prompts: 'Strategies',
   },
   auth: {
     loginTitle: 'Login',
@@ -115,8 +116,10 @@ export default {
     historyCleared: 'History cleared',
   },
   prompts: {
-    title: 'Custom Strategies',
-    desc: 'Create and manage your own AIGC reduction strategies',
+    title: 'Strategy Management',
+    desc: 'View built-in strategies and manage your own custom AIGC reduction strategies',
+    builtinTitle: 'Built-in Strategies',
+    customTitle: 'My Custom Strategies',
     create: 'New Strategy',
     edit: 'Edit',
     delete: 'Delete',
