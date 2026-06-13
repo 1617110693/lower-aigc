@@ -25,9 +25,4 @@ app.use(ElementPlus, {
   locale: localStorage.getItem('locale') === 'en' ? en : zhCn,
 })
 
-// Initialize auth store
-import { useAuthStore } from '@/stores/auth'
-const authStore = useAuthStore()
-authStore.init().then(() => {
-  app.mount('#app')
-})
+app.mount('#app')

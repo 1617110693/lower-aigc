@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import settings, is_admin_email
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models import User
@@ -149,12 +149,22 @@ class AuthService:
         access_token = create_access_token(user.id)
         return TokenResponse(
             access_token=access_token,
-            user=UserResponse.model_validate(user),
+            user=self._build_user_response(user),
+        )
+
+    def _build_user_response(self, user: User) -> UserResponse:
+        """构建 UserResponse，自动注入 is_admin 标记"""
+        return UserResponse(
+            id=user.id,
+            email=user.email,
+            is_verified=user.is_verified,
+            is_admin=is_admin_email(user.email),
+            created_at=user.created_at,
         )
 
     async def get_me(self, user: User) -> UserResponse:
         """获取当前登录用户信息"""
-        return UserResponse.model_validate(user)
+        return self._build_user_response(user)
 
     async def forgot_password(self, email: str) -> dict:
         """

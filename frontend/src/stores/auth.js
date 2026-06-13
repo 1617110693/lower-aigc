@@ -6,19 +6,39 @@ import { ElMessage } from 'element-plus'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
   const loading = ref(false)
+  const initialized = ref(false)
+  let initPromise = null  // 防止并发重复调用
 
   const isAuthenticated = computed(() => !!user.value)
   const userEmail = computed(() => user.value?.email)
+  const isAdmin = computed(() => user.value?.is_admin ?? false)
 
   async function init() {
-    const token = localStorage.getItem('token')
-    if (!token) return
-    try {
-      const res = await getMe()
-      user.value = res.data
-    } catch {
-      localStorage.removeItem('token')
-    }
+    // 已初始化则直接返回，避免重复请求
+    if (initialized.value) return
+    // 已有进行中的初始化，等待它完成
+    if (initPromise) return initPromise
+
+    initPromise = (async () => {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        initialized.value = true
+        return
+      }
+      try {
+        const res = await getMe()
+        user.value = res.data
+      } catch {
+        // token 过期或无效时静默清除，由路由守卫处理跳转
+        localStorage.removeItem('token')
+        user.value = null
+      } finally {
+        initialized.value = true
+        initPromise = null
+      }
+    })()
+
+    return initPromise
   }
 
   async function login(email, password) {
@@ -83,5 +103,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  return { user, loading, isAuthenticated, userEmail, init, login, register, verify, forgotPwd, resetPwd, logout }
+  return { user, loading, initialized, isAuthenticated, userEmail, isAdmin, init, login, register, verify, forgotPwd, resetPwd, logout }
 })

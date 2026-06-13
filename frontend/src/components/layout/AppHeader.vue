@@ -47,6 +47,10 @@ function logout() {
           <el-button text @click="router.push({ name: 'prompts' })">
             {{ t('nav.prompts') }}
           </el-button>
+          <el-button v-if="authStore.isAdmin" text type="warning" @click="router.push({ name: 'admin' })">
+            <el-icon><Setting /></el-icon>
+            {{ t('nav.admin') }}
+          </el-button>
           <el-dropdown trigger="click">
             <span class="user-dropdown">
               <el-icon><User /></el-icon>

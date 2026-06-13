@@ -4,11 +4,12 @@
 
 ## 功能特性
 
-- **智能改写** — 内置 3 套降重策略（学术改写 / 风格多样化 / 自然人声），DeepSeek 大模型驱动
-- **灵活模式** — 全文一键降重，或逐段精细控制
+- **智能改写** — 内置 3 套降重策略（学术改写 / 风格多样化 / 自然人声）+ 用户自定义策略，DeepSeek v4 大模型驱动
+- **灵活模式** — 全文一键降重，或逐段精细控制；快速粘贴文本即时改写
 - **格式保留** — 导出 DOCX 时保留字体、字号、加粗、对齐、行距等原始样式
 - **邮箱注册** — 支持邮箱验证注册、密码重置（开发环境可跳过验证）
 - **中英双语** — 默认中文，一键切换英文界面
+- **管理员面板** — 可视化配置 .env（API Key、JWT 过期时间、管理员名单等），无需手动编辑文件
 - **一键部署** — Docker Compose 一键启动，也支持本地裸跑调试
 
 ## 技术栈
@@ -17,7 +18,7 @@
 |---|------|
 | 前端 | Vue 3 + Vite + Element Plus + vue-i18n + Pinia |
 | 后端 | Python FastAPI + SQLAlchemy 2.0 (async) + SQLite + UV |
-| AI | DeepSeek API (deepseek-chat) |
+| AI | DeepSeek API (deepseek-v4-flash / deepseek-v4-pro) |
 | 部署 | Docker + Nginx + docker-compose |
 
 ## 快速开始
@@ -92,9 +93,9 @@ lower-aigc/
 │       ├── main.py           # 应用入口，CORS，生命周期
 │       ├── config.py         # 配置（从 .env 加载）
 │       ├── database.py       # 异步 SQLAlchemy 引擎
-│       ├── models/           # ORM 模型（User, Document, Paragraph）
+│       ├── models/           # ORM 模型（User, Document, Paragraph, CustomPrompt）
 │       ├── schemas/          # Pydantic 请求/响应模型
-│       ├── routers/          # API 路由（auth, document, health）
+│       ├── routers/          # API 路由（auth, document, health, system, admin）
 │       ├── services/         # 业务逻辑（auth, document, deepseek, email）
 │       ├── core/             # JWT、密码哈希、依赖注入、异常
 │       └── utils/            # DOCX 解析器 & 构建器
@@ -105,12 +106,13 @@ lower-aigc/
     └── src/
         ├── App.vue           # 布局外壳
         ├── main.js           # 入口，注册插件
-        ├── views/            # 7 个页面视图
+        ├── views/            # 页面视图（含策略管理、管理员设置）
         ├── components/       # 通用 & 业务组件
-        ├── stores/           # 3 个 Pinia store
+        ├── stores/           # Pinia store（auth, app）
         ├── api/              # axios 实例 + API 模块
         ├── router/           # 路由 + 认证守卫
         ├── i18n/             # 中英文语言包
+        ├── utils/            # 日志等工具
         └── composables/      # 可组合函数
 ```
 
@@ -122,7 +124,7 @@ lower-aigc/
 |------|------|------|
 | POST | `/register` | 注册，发送验证邮件 |
 | POST | `/verify-email` | 邮箱验证 |
-| POST | `/login` | 登录，返回 JWT |
+| POST | `/login` | 登录，返回 JWT（含 is_admin 字段） |
 | POST | `/forgot-password` | 发送重置邮件 |
 | POST | `/reset-password` | 重置密码 |
 | GET | `/me` | 获取当前用户信息 |
@@ -138,15 +140,39 @@ lower-aigc/
 | GET | `/{id}/status` | 降重进度 |
 | GET | `/{id}/export` | 导出 DOCX |
 | DELETE | `/{id}` | 删除文档 |
-| GET | `/prompts` | 可用降重策略列表 |
+| GET | `/prompts` | 可用降重策略列表（含内置+自定义） |
+
+### 系统 `/api/v1/system`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/reduce-text` | 快速降低 AIGC（粘贴文本） |
+| GET | `/quick-reduce-history` | 快速降重历史记录 |
+| POST | `/quick-reduce-history` | 保存快速降重记录 |
+| DELETE | `/quick-reduce-history/{id}` | 删除单条历史 |
+| DELETE | `/quick-reduce-history` | 清空历史 |
+| GET | `/prompts` | 自定义策略列表（需登录） |
+| POST | `/prompts` | 创建自定义策略 |
+| PUT | `/prompts/{id}` | 更新自定义策略 |
+| DELETE | `/prompts/{id}` | 删除自定义策略 |
+| GET | `/admin/env` | 读取 .env 配置（管理员） |
+| PUT | `/admin/env` | 更新 .env 配置（管理员） |
 
 ## 降重策略
+
+系统内置 3 套只读策略，登录用户可在「改写策略」页面创建自定义策略（自定义系统提示词）。
+
+### 内置策略
 
 | ID | 名称 | 说明 |
 |----|------|------|
 | `academic-paraphrase` | 学术改写 | 变换句式结构，使用学科词汇，保持学术严谨性 |
 | `style-diversification` | 风格多样化 | 长短句交替，添加过渡语，融入领域术语 |
 | `natural-human-voice` | 自然人声 | 增加适度不完美，模拟真人写作风格 |
+
+### 自定义策略
+
+自定义策略存储在数据库中，ID 格式为 `custom-{id}`，与内置策略完全互通——可在降重工作台和快速降重中选用。
 
 ## 配置项
 
@@ -155,7 +181,10 @@ lower-aigc/
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `DEEPSEEK_API_KEY` | **必填** DeepSeek API 密钥 | — |
+| `DEEPSEEK_BASE_URL` | DeepSeek API 基础 URL | `https://api.deepseek.com` |
 | `SECRET_KEY` | JWT 签名密钥 | `change-me...` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | JWT 令牌有效期（分钟） | `1440`（24h） |
+| `ADMIN_EMAILS` | 管理员邮箱列表，JSON 数组 | `[]` |
 | `DATABASE_URL` | SQLite 数据库路径 | `sqlite+aiosqlite:///./data/lower_aigc.db` |
 | `SMTP_HOST` | SMTP 服务器 | `smtp.example.com` |
 | `SMTP_PASSWORD` | SMTP 密码（空=控制台模式） | — |

@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     # ── 认证配置 ──
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440         # JWT 令牌有效期（分钟），默认 1440 = 24 小时
     REQUIRE_EMAIL_VERIFICATION: bool = True         # 是否要求邮箱验证后才能登录（开发环境建议设为 false）
+    ADMIN_EMAILS: str = "[]"                        # 管理员邮箱列表，JSON 数组。例: ["admin@example.com","admin2@example.com"]
 
     # ── 上传限制 ──
     MAX_UPLOAD_SIZE_MB: int = 16                    # 单文件上传大小上限 (MB)
@@ -77,3 +78,19 @@ class Settings(BaseSettings):
 
 # 全局配置实例 — 在应用的任何地方导入此实例即可读取配置
 settings = Settings()
+
+
+def is_admin_email(email: str) -> bool:
+    """检查给定邮箱是否为管理员（解析 JSON 数组格式的 ADMIN_EMAILS）"""
+    import json
+
+    raw = settings.ADMIN_EMAILS.strip()
+    if not raw or raw == "[]":
+        return False
+    try:
+        admins = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(admins, list):
+        return False
+    return email.strip().lower() in [a.strip().lower() for a in admins if isinstance(a, str)]

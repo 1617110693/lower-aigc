@@ -44,6 +44,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('@/views/admin/AdminSettingsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/documents',
       meta: { requiresAuth: true },
       children: [
@@ -73,8 +79,14 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, from) => {
+router.beforeEach(async (to, from) => {
   const auth = useAuthStore()
+
+  // 确保认证状态已从 localStorage 恢复（页面刷新后第一次导航）
+  // init() 是幂等的 — 如果已初始化，立即返回
+  if (!auth.initialized) {
+    await auth.init()
+  }
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }

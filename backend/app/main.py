@@ -31,7 +31,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.core.exceptions import AppException
 from app.database import init_db
-from app.routers import auth, document, health, system
+from app.routers import admin, auth, document, health, system
 
 # ── 运行时日志配置 ───────────────────────────────────────────────────────────
 # 同时输出到控制台 (StreamHandler) 和文件 (RotatingFileHandler)
@@ -54,6 +54,9 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+
+# 抑制 watchfiles 文件变更日志（每次检测到变更都输出 INFO，太吵）
+logging.getLogger("watchfiles").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
@@ -192,6 +195,7 @@ app.include_router(document.router, prefix="/api/v1/documents", tags=["Documents
 
 # 系统相关: /api/v1/system/*
 app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
+app.include_router(admin.router, prefix="/api/v1/system", tags=["Admin"])
 
 
 @app.get("/")
