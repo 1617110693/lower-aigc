@@ -61,18 +61,12 @@ class ConsoleEmailService(EmailService):
     async def send_verification_email(self, email: str, token: str) -> None:
         """打印邮箱验证链接到控制台"""
         verify_url = f"{settings.APP_URL}/verify-email?token={token}"
-        logger.info("=" * 60)
-        logger.info(f"VERIFICATION EMAIL to: {email}")
-        logger.info(f"Verification link: {verify_url}")
-        logger.info("=" * 60)
+        logger.info("Verification email: %s → %s", email, verify_url)
 
     async def send_reset_email(self, email: str, token: str) -> None:
         """打印密码重置链接到控制台"""
         reset_url = f"{settings.APP_URL}/reset-password?token={token}"
-        logger.info("=" * 60)
-        logger.info(f"PASSWORD RESET EMAIL to: {email}")
-        logger.info(f"Reset link: {reset_url}")
-        logger.info("=" * 60)
+        logger.info("Password reset email: %s → %s", email, reset_url)
 
 
 class SmtpEmailService(EmailService):

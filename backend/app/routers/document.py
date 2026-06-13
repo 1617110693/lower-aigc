@@ -26,18 +26,18 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_optional_user
 from app.database import get_db
 from app.models import User
 from app.schemas.document import (
     DocumentDetailResponse,
     DocumentResponse,
+    PromptInfo,
     ReductionRequest,
     ReductionStatusResponse,
 )
 from app.services.document_service import DocumentService
 from app.services.deepseek_service import get_prompts
-from app.schemas.document import PromptInfo
 
 logger = logging.getLogger(__name__)
 
@@ -45,20 +45,21 @@ router = APIRouter()
 
 
 @router.get("/prompts", response_model=list[PromptInfo])
-async def list_prompts():
+async def list_prompts(
+    current_user: User | None = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     获取可用的降重策略列表 — GET /api/v1/documents/prompts
 
-    无需认证即可访问。
-    返回策略的 ID、中文名称和描述，用于前端下拉选择。
-
-    注意: 返回的 PromptInfo 不包含完整的系统提示词内容，
-    完整提示词在启动降重时才通过 prompt_id 查找。
+    可选认证：
+      - 游客：仅返回内置策略
+      - 登录用户：返回内置策略 + 用户自定义策略
 
     响应:
-        [{"id": "academic-paraphrase", "name": "学术改写", "description": "..."}, ...]
+        [{"id": "academic-paraphrase", "name": "学术改写", "description": "...", "system_default": true}, ...]
     """
-    return get_prompts()
+    return await get_prompts(db=db, user_id=current_user.id if current_user else None)
 
 
 @router.post("/upload")

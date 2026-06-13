@@ -270,8 +270,8 @@ class DocumentService:
         if doc.status == "reducing":
             raise ValueError("Document is already being reduced")
 
-        # 验证提示词 ID 有效性
-        system_prompt = get_prompt_content(request.prompt_id)
+        # 验证提示词 ID 有效性（支持内置和自定义策略）
+        system_prompt = await get_prompt_content(request.prompt_id, self.db)
         if not system_prompt:
             raise ValueError(f"Unknown prompt ID: {request.prompt_id}")
 
@@ -284,7 +284,9 @@ class DocumentService:
         # 注意: 后台任务需要自己管理数据库会话
         asyncio.create_task(
             self._run_reduction(
-                doc, request.mode, system_prompt, request.paragraph_ids
+                doc, request.mode, system_prompt,
+                request.paragraph_ids, request.model,
+                request.preserve_word_count,
             )
         )
 
@@ -358,6 +360,8 @@ class DocumentService:
         mode: str,
         system_prompt: str,
         paragraph_ids: list[int] | None,
+        model: str = "deepseek-v4-flash",
+        preserve_word_count: bool = False,
     ):
         """
         后台降重任务 — 在 asyncio.create_task() 中运行
@@ -370,6 +374,8 @@ class DocumentService:
             mode: 降重模式 "full" | "paragraph"
             system_prompt: 系统提示词完整内容
             paragraph_ids: 逐段模式下指定的段落 ID 列表（可选）
+            model: 模型名称，默认 deepseek-v4-flash
+            preserve_word_count: 是否保持原文字数
 
         状态流转:
             成功: status → "completed"
@@ -400,11 +406,13 @@ class DocumentService:
                 # 根据模式分发
                 if mode == "full":
                     await self._reduce_full_text(
-                        db, doc, paragraphs, system_prompt, total
+                        db, doc, paragraphs, system_prompt, total, model,
+                        preserve_word_count
                     )
                 else:
                     await self._reduce_paragraph_by_paragraph(
-                        db, doc, paragraphs, system_prompt, total
+                        db, doc, paragraphs, system_prompt, total, model,
+                        preserve_word_count
                     )
 
                 # 降重成功
@@ -428,7 +436,9 @@ class DocumentService:
                 pass
 
     async def _reduce_full_text(
-        self, db, doc, paragraphs, system_prompt: str, total: int
+        self, db, doc, paragraphs, system_prompt: str, total: int,
+        model: str = "deepseek-v4-flash",
+        preserve_word_count: bool = False,
     ):
         """
         全文降重模式
@@ -447,7 +457,10 @@ class DocumentService:
 
         # 拼接全文（段落间用双换行分隔）
         full_text = "\n\n".join(p.original_text for p in paragraphs)
-        reduced = await deepseek_client.reduce_text(full_text, system_prompt)
+        reduced = await deepseek_client.reduce_text(
+            full_text, system_prompt, model=model,
+            preserve_word_count=preserve_word_count
+        )
 
         # 更新进度 — AI 调用完成，开始处理结果
         doc.progress = 80
@@ -477,7 +490,9 @@ class DocumentService:
         await db.flush()
 
     async def _reduce_paragraph_by_paragraph(
-        self, db, doc, paragraphs, system_prompt: str, total: int
+        self, db, doc, paragraphs, system_prompt: str, total: int,
+        model: str = "deepseek-v4-flash",
+        preserve_word_count: bool = False,
     ):
         """
         逐段降重模式
@@ -495,7 +510,8 @@ class DocumentService:
         for i, para in enumerate(paragraphs):
             try:
                 reduced = await deepseek_client.reduce_text(
-                    para.original_text, system_prompt
+                    para.original_text, system_prompt, model=model,
+                    preserve_word_count=preserve_word_count
                 )
                 para.reduced_text = reduced
                 para.is_reduced = True

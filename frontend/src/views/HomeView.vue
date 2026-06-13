@@ -9,9 +9,9 @@ const authStore = useAuthStore()
 
 function getStarted() {
   if (authStore.isAuthenticated) {
-    router.push({ name: 'upload' })
+    router.push({ name: 'history' })
   } else {
-    router.push({ name: 'register' })
+    router.push({ name: 'login' })
   }
 }
 

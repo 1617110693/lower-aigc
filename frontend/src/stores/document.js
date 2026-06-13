@@ -58,8 +58,8 @@ export const useDocumentStore = defineStore('document', () => {
     prompts.value = res.data
   }
 
-  async function reduce(documentId, mode, promptId, paragraphIds = null) {
-    await startReduction(documentId, mode, promptId, paragraphIds)
+  async function reduce(documentId, mode, promptId, paragraphIds = null, model = 'deepseek-v4-flash', preserveWordCount = false) {
+    await startReduction(documentId, mode, promptId, paragraphIds, model, preserveWordCount)
     isReducing.value = true
     startPolling(documentId)
   }

@@ -1,14 +1,16 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDocumentStore } from '@/stores/document'
 
 const { t } = useI18n()
 const router = useRouter()
 const docStore = useDocumentStore()
 const loading = ref(false)
+const uploading = ref(false)
+const fileList = ref([])
 
 const statusMap = {
   uploaded: 'document.statusUploaded',
@@ -35,6 +37,39 @@ onMounted(async () => {
   }
 })
 
+// ── 上传 ──────────────────────────────────────────────────────────────────────
+
+async function handleUpload(options) {
+  uploading.value = true
+  try {
+    const result = await docStore.upload(options.file)
+    fileList.value = []
+    await docStore.fetchDocuments()
+    ElMessage.success(t('document.parseSuccess'))
+    router.push({ name: 'reduce', params: { id: result.document_id } })
+  } catch {
+    // Error handled by interceptor
+  } finally {
+    uploading.value = false
+  }
+}
+
+function beforeUpload(file) {
+  const isDocx = file.name.toLowerCase().endsWith('.docx')
+  if (!isDocx) {
+    ElMessage.error(t('document.uploadTip'))
+    return false
+  }
+  const isUnderLimit = file.size / 1024 / 1024 < 16
+  if (!isUnderLimit) {
+    ElMessage.error(t('document.uploadTip'))
+    return false
+  }
+  return true
+}
+
+// ── 文档操作 ──────────────────────────────────────────────────────────────────
+
 function viewDocument(doc) {
   router.push({ name: 'reduce', params: { id: doc.id } })
 }
@@ -57,15 +92,41 @@ function formatDate(dateStr) {
 </script>
 
 <template>
-  <div class="history-page" v-loading="loading">
-    <div class="history-header">
-      <h1>{{ t('nav.history') }}</h1>
-      <el-button type="primary" @click="router.push({ name: 'upload' })">
-        <el-icon><Plus /></el-icon>{{ t('nav.upload') }}
-      </el-button>
+  <div class="documents-page" v-loading="loading">
+    <div class="documents-header">
+      <h1>{{ t('nav.myDocuments') }}</h1>
     </div>
 
-    <el-table v-if="docStore.documents.length > 0" :data="docStore.documents" stripe style="width: 100%">
+    <!-- 上传区域 -->
+    <div class="upload-section">
+      <el-upload
+        v-model:file-list="fileList"
+        class="upload-dragger"
+        drag
+        :auto-upload="true"
+        :show-file-list="false"
+        :http-request="handleUpload"
+        :before-upload="beforeUpload"
+        accept=".docx"
+      >
+        <el-icon class="upload-icon" :size="40" color="#6c5ce7">
+          <UploadFilled />
+        </el-icon>
+        <div class="upload-text">
+          <p class="upload-hint">{{ t('document.uploadHint') }}</p>
+          <p class="upload-tip">{{ t('document.uploadTip') }}</p>
+        </div>
+      </el-upload>
+      <div v-if="uploading" class="upload-progress">
+        <el-progress :percentage="100" :indeterminate="true" :duration="2" />
+        <p>{{ t('document.uploading') }}</p>
+      </div>
+    </div>
+
+    <!-- 文档列表 -->
+    <div class="documents-section">
+      <h2 class="section-title">{{ t('nav.history') }}</h2>
+      <el-table v-if="docStore.documents.length > 0" :data="docStore.documents" stripe style="width: 100%">
       <el-table-column prop="title" :label="t('document.title')" min-width="200">
         <template #default="{ row }">
           <span class="doc-title" @click="viewDocument(row)">{{ row.title || row.original_filename }}</span>
@@ -96,11 +157,7 @@ function formatDate(dateStr) {
       </el-table-column>
     </el-table>
 
-    <el-empty v-else :description="t('document.noDocument')">
-      <el-button type="primary" @click="router.push({ name: 'upload' })">
-        {{ t('nav.upload') }}
-      </el-button>
-    </el-empty>
+    <el-empty v-else :description="t('document.noDocument')" />
 
     <div v-if="docStore.pagination.total > docStore.pagination.size" class="pagination-wrap">
       <el-pagination
@@ -111,26 +168,84 @@ function formatDate(dateStr) {
         @current-change="(p) => docStore.fetchDocuments(p)"
       />
     </div>
+    </div><!-- .documents-section -->
   </div>
 </template>
 
 <style scoped>
-.history-page {
+.documents-page {
   max-width: 1200px;
   margin: 0 auto;
 }
 
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.documents-header {
   margin-bottom: 24px;
 }
 
-.history-header h1 {
+.documents-header h1 {
   font-size: 24px;
   font-weight: 700;
   color: #2c3e50;
+}
+
+/* ── 上传区域 ─────────────────────────────────────────────── */
+
+.upload-section {
+  margin-bottom: 32px;
+}
+
+.upload-dragger :deep(.el-upload-dragger) {
+  background: #fff;
+  border: 2px dashed #d9d9d9;
+  border-radius: 16px;
+  padding: 36px 24px;
+  transition: border-color 0.3s, background 0.3s;
+}
+
+.upload-dragger :deep(.el-upload-dragger:hover) {
+  border-color: #6c5ce7;
+  background: #faf9ff;
+}
+
+.upload-icon {
+  margin-bottom: 8px;
+}
+
+.upload-hint {
+  font-size: 16px;
+  color: #303133;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.upload-tip {
+  font-size: 13px;
+  color: #c0c4cc;
+  margin: 0;
+}
+
+.upload-progress {
+  text-align: center;
+  padding: 16px 0 0;
+}
+
+.upload-progress p {
+  margin-top: 8px;
+  color: #909399;
+  font-size: 14px;
+}
+
+/* ── 文档列表 ─────────────────────────────────────────────── */
+
+.documents-section {
+  /* container for the table area */
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #909399;
+  margin: 0 0 16px;
 }
 
 .doc-title {

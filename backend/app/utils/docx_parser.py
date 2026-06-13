@@ -86,7 +86,7 @@ def parse_docx(file_path: str | Path) -> list[dict]:
         })
         index += 1
 
-    logger.info(f"Parsed {len(paragraphs)} non-empty paragraphs from {file_path}")
+    logger.debug(f"Parsed {len(paragraphs)} non-empty paragraphs from {file_path}")
     return paragraphs
 
 

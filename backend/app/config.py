@@ -55,7 +55,7 @@ class Settings(BaseSettings):
 
     # ── DeepSeek API 配置 ──
     DEEPSEEK_API_KEY: str = ""                      # DeepSeek API 密钥（必填，否则降重功能不可用）
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"  # DeepSeek API 基础 URL
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"  # DeepSeek API 基础 URL（不带 /v1）
 
     # ── 邮件 (SMTP) 配置 ──
     # 不配置 SMTP_PASSWORD 时，开发环境会自动使用控制台模式（打印到日志）

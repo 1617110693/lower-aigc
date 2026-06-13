@@ -115,7 +115,7 @@ def build_docx(paragraphs: list[dict]) -> io.BytesIO:
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)  # 重置指针到开头，供 StreamingResponse 读取
-    logger.info(f"Built DOCX with {len(paragraphs)} paragraphs")
+    logger.debug(f"Built DOCX with {len(paragraphs)} paragraphs")
     return buf
 
 

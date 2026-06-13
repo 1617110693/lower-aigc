@@ -35,6 +35,13 @@ const router = createRouter({
       path: '/quick-reduce',
       name: 'quick-reduce',
       component: () => import('@/views/QuickReduceView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/prompts',
+      name: 'prompts',
+      component: () => import('@/views/prompt/PromptManagerView.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/documents',
@@ -42,8 +49,7 @@ const router = createRouter({
       children: [
         {
           path: 'upload',
-          name: 'upload',
-          component: () => import('@/views/document/UploadView.vue'),
+          redirect: { name: 'history' },
         },
         {
           path: ':id/reduce',
@@ -58,19 +64,25 @@ const router = createRouter({
         },
       ],
     },
+    // 捕获外部注入的未知路径（如浏览器扩展的 JSONP 回调），避免 Vue Router 警告
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('@/views/NotFoundView.vue'),
+    },
   ],
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, from) => {
   const auth = useAuthStore()
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    next({ name: 'login', query: { redirect: to.fullPath } })
-  } else if (to.meta.guest && auth.isAuthenticated) {
-    next({ name: 'upload' })
-  } else {
-    next()
+    return { name: 'login', query: { redirect: to.fullPath } }
   }
+  if (to.meta.guest && auth.isAuthenticated) {
+    return { name: 'history' }
+  }
+  // 不返回任何值即允许导航
 })
 
 export default router

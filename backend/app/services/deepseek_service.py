@@ -30,6 +30,8 @@ import logging
 from typing import AsyncGenerator
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.schemas.document import PromptInfo
@@ -78,32 +80,96 @@ PROMPTS: list[dict] = [
 ]
 
 
-def get_prompts() -> list[PromptInfo]:
+async def get_prompts(
+    db: AsyncSession | None = None,
+    user_id: int | None = None,
+) -> list[PromptInfo]:
     """
     获取可用的降重策略列表（不含完整提示词内容）
 
-    此函数供 /api/v1/documents/prompts 端点调用，
-    向前端返回策略的 id、名称和描述，供用户选择。
-    完整提示词内容在降重时才通过 get_prompt_content() 获取。
+    返回内置策略 + 用户自定义策略的合并列表。
+    - 游客（user_id=None）：仅返回内置策略
+    - 登录用户：返回内置策略 + 该用户的自定义策略
+
+    自定义策略的 ID 格式为 "custom-{db_id}"，避免与内置策略冲突。
     """
-    return [
-        PromptInfo(id=p["id"], name=p["name"], description=p["description"])
+    # 内置策略
+    builtin = [
+        PromptInfo(
+            id=p["id"],
+            name=p["name"],
+            description=p["description"],
+            system_default=True,
+        )
         for p in PROMPTS
     ]
 
+    # 用户自定义策略
+    if db is not None and user_id is not None:
+        from app.models.custom_prompt import CustomPrompt
 
-def get_prompt_content(prompt_id: str) -> str | None:
+        result = await db.execute(
+            select(CustomPrompt).where(
+                CustomPrompt.user_id == user_id,
+                CustomPrompt.is_active == True,
+            ).order_by(CustomPrompt.created_at.asc())
+        )
+        customs = result.scalars().all()
+        custom_list = [
+            PromptInfo(
+                id=f"custom-{c.id}",
+                name=c.name,
+                description=c.description,
+                system_default=False,
+            )
+            for c in customs
+        ]
+        return builtin + custom_list
+
+    return builtin
+
+
+async def get_prompt_content(
+    prompt_id: str,
+    db: AsyncSession | None = None,
+) -> str | None:
     """
     根据策略 ID 获取完整的 system message 内容
 
+    查找顺序：
+      1. 内置策略（PROMPTS 列表）
+      2. 自定义策略（custom_prompts 表，ID 格式 "custom-{id}"）
+
     参数:
-        prompt_id: 策略标识符，如 "academic-paraphrase"
+        prompt_id: 策略标识符，如 "academic-paraphrase" 或 "custom-7"
+        db: 数据库会话（查找自定义策略时需要）
     返回:
         完整的 system message 文本，找不到则返回 None
     """
+    # 先查内置策略
     for p in PROMPTS:
         if p["id"] == prompt_id:
             return p["system_content"]
+
+    # 再查自定义策略（ID 格式："custom-{id}"）
+    if prompt_id.startswith("custom-") and db is not None:
+        from app.models.custom_prompt import CustomPrompt
+
+        try:
+            custom_id = int(prompt_id.split("-", 1)[1])
+        except (ValueError, IndexError):
+            return None
+
+        result = await db.execute(
+            select(CustomPrompt).where(
+                CustomPrompt.id == custom_id,
+                CustomPrompt.is_active == True,
+            )
+        )
+        custom = result.scalar_one_or_none()
+        if custom:
+            return custom.system_content
+
     return None
 
 
@@ -125,9 +191,12 @@ class DeepSeekClient:
       - timeout: 单次请求超时时间（默认 120 秒）
 
     API 参数说明:
-      - model: deepseek-chat (标准对话模型)
+      - model: deepseek-v4-flash (快速模型，默认) / deepseek-v4-pro (高质量模型，支持思考模式)
       - temperature: 0.7 (中等的创造性，兼顾多样化和稳定性)
       - max_tokens: 4096 (单次改写最多返回的 token 数)
+
+    注意:
+      deepseek-chat 与 deepseek-reasoner 将于 2026/07/24 弃用，已迁移至 v4 系列。
     """
 
     def __init__(self):
@@ -136,19 +205,34 @@ class DeepSeekClient:
         self.max_retries = 3          # 最大重试次数
         self.timeout = 120.0          # 超时时间（秒），长文本可能需要较长时间
 
-    async def reduce_text(self, text: str, system_prompt: str) -> str:
+    async def reduce_text(
+        self,
+        text: str,
+        system_prompt: str,
+        model: str = "deepseek-v4-flash",
+        preserve_word_count: bool = False,
+    ) -> str:
         """
         调用 DeepSeek API 改写文本
 
         参数:
             text: 待改写的原始文本（单段落或全文拼接）
             system_prompt: 系统提示词（定义改写风格和约束）
+            model: 模型名称，默认 deepseek-v4-flash，可选 deepseek-v4-pro
+            preserve_word_count: 是否尽可能保持原文字数不变
         返回:
             API 返回的改写后文本
         异常:
             ValueError: API 密钥未配置
             RuntimeError: 重试耗尽后仍然失败
         """
+        # 如果开启了字数保持，将约束追加到 system prompt
+        if preserve_word_count:
+            system_prompt = (
+                f"{system_prompt}\n\n"
+                "【重要约束】改写后的文本字数必须与原文尽可能接近，误差控制在±10%以内。"
+                "不得大幅扩充或缩减内容，保持原文的信息密度和篇幅。"
+            )
         if not self.api_key:
             raise ValueError("DEEPSEEK_API_KEY is not configured")
 
@@ -158,7 +242,7 @@ class DeepSeekClient:
             "Content-Type": "application/json",
         }
         payload = {
-            "model": "deepseek-chat",
+            "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text},
@@ -175,7 +259,43 @@ class DeepSeekClient:
                     response = await client.post(url, json=payload, headers=headers)
                     response.raise_for_status()
                     data = response.json()
-                    return data["choices"][0]["message"]["content"]
+
+                    # 诊断日志：记录 API 响应结构（仅首次成功时）
+                    if attempt == 0:
+                        choice = data.get("choices", [{}])[0] if "choices" in data else {}
+                        msg = choice.get("message", {}) if "message" in choice else {}
+                        content_preview = (
+                            str(msg.get("content", ""))[:200]
+                            if msg.get("content")
+                            else "<EMPTY>"
+                        )
+                        logger.info(
+                            "DeepSeek API response: model=%s, "
+                            "choices_count=%s, "
+                            "content_length=%s, "
+                            "finish_reason=%s, "
+                            "content_preview=%s",
+                            model,
+                            len(data.get("choices", [])),
+                            len(msg.get("content") or ""),
+                            choice.get("finish_reason", "N/A"),
+                            content_preview,
+                        )
+                        # 检查是否为 reasoning 模型响应（content 在 reasoning_content 中）
+                        if "reasoning_content" in msg:
+                            logger.info(
+                                "DeepSeek reasoning_content present, length=%s",
+                                len(msg.get("reasoning_content", "")),
+                            )
+
+                    # v4 系列模型兼容：如果 content 为空但存在 reasoning_content，
+                    # 使用 reasoning_content 作为最终输出
+                    content = data["choices"][0]["message"].get("content", "")
+                    if not content and "reasoning_content" in data["choices"][0]["message"]:
+                        logger.info("Using reasoning_content as fallback for empty content")
+                        content = data["choices"][0]["message"].get("reasoning_content", "")
+
+                    return content
 
             except httpx.HTTPStatusError as e:
                 last_error = e

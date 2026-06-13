@@ -19,9 +19,12 @@ FastAPI 应用的主入口文件，负责:
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -30,11 +33,25 @@ from app.core.exceptions import AppException
 from app.database import init_db
 from app.routers import auth, document, health, system
 
-# 配置根日志记录器
-# 格式: 时间 - 模块名 - 级别 - 消息
+# ── 运行时日志配置 ───────────────────────────────────────────────────────────
+# 同时输出到控制台 (StreamHandler) 和文件 (RotatingFileHandler)
+# 日志文件: backend/logs/app.log, 单文件最大 5MB, 保留 3 个旧文件
+
+LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        RotatingFileHandler(
+            os.path.join(LOG_DIR, "app.log"),
+            maxBytes=5 * 1024 * 1024,  # 5MB
+            backupCount=3,
+            encoding="utf-8",
+        ),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -69,6 +86,29 @@ app = FastAPI(
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 请求日志中间件 — 记录每个请求的方法、路径和响应状态码
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    import time
+
+    start = time.time()
+    response = await call_next(request)
+    if response.status_code >= 400:
+        elapsed = (time.time() - start) * 1000
+        logger.warning(
+            "%s %s → %d (%.0fms)",
+            request.method,
+            request.url.path + ("?" + request.url.query if request.url.query else ""),
+            response.status_code,
+            elapsed,
+        )
+    return response
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CORS 中间件 — 允许前端跨域访问
 # ═══════════════════════════════════════════════════════════════════════════════
 app.add_middleware(
@@ -88,6 +128,23 @@ app.add_middleware(
 # ═══════════════════════════════════════════════════════════════════════════════
 # 全局异常处理器
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Pydantic 请求验证异常处理 — 422 Unprocessable Entity
+
+    重写 FastAPI 默认处理器，记录详细的验证错误信息到日志文件，
+    便于调试前后端字段名不匹配等问题。
+    """
+    body = exc.body if hasattr(exc, "body") else None
+    errors = exc.errors()
+    logger.warning(
+        "422 Validation Error: %s %s — body=%s — errors=%s",
+        request.method, request.url.path, body, errors,
+    )
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 
 @app.exception_handler(AppException)

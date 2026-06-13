@@ -31,6 +31,8 @@ from app.models import User
 
 # HTTP Bearer Token 安全方案 — 从 Authorization: Bearer <token> 头中提取令牌
 security_scheme = HTTPBearer()
+# 可选认证方案 — 不强制要求 token，有则解析，无则返回 None
+optional_security_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
@@ -78,3 +80,22 @@ async def get_current_user(
             detail="User not found",
         )
     return user
+
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """
+    可选认证依赖 — 有 token 则返回 User，无则返回 None
+
+    用于需要同时支持游客和登录用户的端点（如策略列表）：
+      - 游客：只看到内置策略
+      - 登录用户：看到内置策略 + 自定义策略
+    """
+    if credentials is None:
+        return None
+    try:
+        return await get_current_user(credentials, db)
+    except HTTPException:
+        return None

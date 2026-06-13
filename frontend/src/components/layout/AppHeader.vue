@@ -19,11 +19,7 @@ function toggleLocale() {
 }
 
 function goHome() {
-  if (authStore.isAuthenticated) {
-    router.push({ name: 'upload' })
-  } else {
-    router.push({ name: 'home' })
-  }
+  router.push({ name: 'home' })
 }
 
 function logout() {
@@ -45,11 +41,8 @@ function logout() {
           <el-button text @click="router.push({ name: 'quick-reduce' })">
             {{ t('nav.quickReduce') }}
           </el-button>
-          <el-button text @click="router.push({ name: 'upload' })">
-            {{ t('nav.upload') }}
-          </el-button>
           <el-button text @click="router.push({ name: 'history' })">
-            {{ t('nav.history') }}
+            {{ t('nav.myDocuments') }}
           </el-button>
           <el-dropdown trigger="click">
             <span class="user-dropdown">

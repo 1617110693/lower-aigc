@@ -13,6 +13,13 @@ const emit = defineEmits(['reduce'])
 const { t } = useI18n()
 const mode = ref('full')
 const selectedPrompt = ref('')
+const selectedModel = ref('deepseek-v4-flash')
+const preserveWordCount = ref(false)
+
+const modelOptions = [
+  { id: 'deepseek-v4-flash', label: 'deepseek-v4-flash' },
+  { id: 'deepseek-v4-pro', label: 'deepseek-v4-pro' },
+]
 
 const canReduce = computed(() => {
   return !props.isReducing && selectedPrompt.value
@@ -23,7 +30,7 @@ function handleReduce() {
     ElMessage.warning(t('reduction.selectPrompt'))
     return
   }
-  emit('reduce', mode.value, selectedPrompt.value, null)
+  emit('reduce', mode.value, selectedPrompt.value, null, selectedModel.value, preserveWordCount.value)
 }
 </script>
 
@@ -36,6 +43,22 @@ function handleReduce() {
           <el-radio-button value="full">{{ t('reduction.modeFullText') }}</el-radio-button>
           <el-radio-button value="paragraph">{{ t('reduction.modeParagraph') }}</el-radio-button>
         </el-radio-group>
+      </div>
+
+      <div class="control-group">
+        <label>{{ t('reduction.modelLabel') }}</label>
+        <el-select
+          v-model="selectedModel"
+          :disabled="isReducing"
+          style="width: 180px"
+        >
+          <el-option
+            v-for="m in modelOptions"
+            :key="m.id"
+            :label="m.label"
+            :value="m.id"
+          />
+        </el-select>
       </div>
 
       <div class="control-group">
@@ -53,6 +76,14 @@ function handleReduce() {
             :value="p.id"
           />
         </el-select>
+      </div>
+
+      <div class="control-group">
+        <el-tooltip :content="t('reduction.preserveWordCount')" placement="top">
+          <el-checkbox v-model="preserveWordCount" :disabled="isReducing" border size="small">
+            {{ t('reduction.preserveWordCount') }}
+          </el-checkbox>
+        </el-tooltip>
       </div>
 
       <div class="control-actions">

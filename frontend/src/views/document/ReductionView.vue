@@ -31,7 +31,7 @@ onMounted(async () => {
     await docStore.fetchPrompts()
   } catch {
     ElMessage.error('Document not found')
-    router.push({ name: 'upload' })
+    router.push({ name: 'history' })
   } finally {
     loading.value = false
   }
@@ -41,10 +41,10 @@ onUnmounted(() => {
   docStore.stopPolling()
 })
 
-async function handleReduce(mode, promptId, paragraphIds) {
+async function handleReduce(mode, promptId, paragraphIds, model, preserveWordCount) {
   reduceLoading.value = true
   try {
-    await docStore.reduce(documentId.value, mode, promptId, paragraphIds)
+    await docStore.reduce(documentId.value, mode, promptId, paragraphIds, model, preserveWordCount)
   } catch {
     // handled by interceptor
   } finally {

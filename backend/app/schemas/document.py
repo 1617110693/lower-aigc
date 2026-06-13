@@ -79,10 +79,19 @@ class ReductionRequest(BaseModel):
 
     mode: full(全文降重) 或 paragraph(逐段降重)
     prompt_id: 要使用的系统提示词 ID（见 /prompts 接口返回的列表）
+    model: 模型名称，deepseek-v4-flash(快速) 或 deepseek-v4-pro(高质量)
     paragraph_ids: 逐段模式下需降重的段落 ID 列表，全文模式可省略
     """
     mode: str = Field(..., description="full or paragraph")
     prompt_id: str = Field(..., description="ID of the system prompt to use")
+    model: str = Field(
+        "deepseek-v4-flash",
+        description="Model name: deepseek-v4-flash or deepseek-v4-pro"
+    )
+    preserve_word_count: bool = Field(
+        False,
+        description="Whether to keep output word count similar to input"
+    )
     paragraph_ids: list[int] | None = Field(
         None, description="Paragraph IDs for paragraph mode"
     )
@@ -106,3 +115,35 @@ class PromptInfo(BaseModel):
     id: str
     name: str
     description: str
+    system_default: bool = True
+
+
+# ── 自定义策略 CRUD Schemas ────────────────────────────────────────────────────
+
+
+class CustomPromptCreate(BaseModel):
+    """创建自定义策略请求"""
+    name: str = Field(..., min_length=1, max_length=100, description="策略名称")
+    description: str = Field("", max_length=500, description="策略描述")
+    system_content: str = Field(..., min_length=10, max_length=10000, description="系统提示词内容")
+
+
+class CustomPromptUpdate(BaseModel):
+    """更新自定义策略请求（所有字段可选）"""
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    system_content: str | None = Field(None, min_length=10, max_length=10000)
+    is_active: bool | None = None
+
+
+class CustomPromptResponse(BaseModel):
+    """自定义策略响应（含完整内容，仅用于管理页面）"""
+    id: int
+    name: str
+    description: str
+    system_content: str
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+    model_config = {"from_attributes": True}
